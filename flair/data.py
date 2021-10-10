@@ -621,6 +621,7 @@ class Sentence(DataPoint):
         super().__init__()
 
         self.tokens: List[Token] = []
+        self.token_map: Dict[int, Token] = {}
 
         self._embeddings: Dict = {}
 
@@ -664,9 +665,7 @@ class Sentence(DataPoint):
         self.is_document_boundary: bool = False
 
     def get_token(self, token_id: int) -> Token:
-        for token in self.tokens:
-            if token.idx == token_id:
-                return token
+        return self.token_map[token_id]
 
     def add_token(self, token: Union[Token, str]):
 
@@ -688,6 +687,8 @@ class Sentence(DataPoint):
         token.sentence = self
         if token.idx is None:
             token.idx = len(self.tokens)
+
+        self.token_map[token.idx] = token
 
     def get_label_names(self):
         label_names = []
@@ -1432,7 +1433,7 @@ class Corpus:
             for label in all_sentence_labels:
                 label_dictionary.add_item(label)
 
-        if len(label_dictionary.idx2item) == 0:
+        if len(label_dictionary.idx2item) == 1:
             log.error(
                 f"Corpus contains only the labels: {', '.join([f'{label[0]} (#{label[1]})' for label in all_label_types.most_common()])}")
             log.error(f"You specified as label_type='{label_type}' which is not in this dataset!")

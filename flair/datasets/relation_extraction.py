@@ -207,18 +207,24 @@ class RE_ENGLISH_SEMEVAL2010(CoNLLUCorpus):
 
 
 class RE_ENGLISH_TACRED(CoNLLUCorpus):
-    def __init__(self, base_path: Union[str, Path] = None, in_memory: bool = True):
+    def __init__(self,
+                 base_path: Union[str, Path] = None,
+                 in_memory: bool = True,
+                 use_retacred: bool = True,
+                 ):
         """
         TAC Relation Extraction Dataset with 41 relations from https://nlp.stanford.edu/projects/tacred/.
-        Manual download is required for this dataset.
-        :param base_path:
-        :param in_memory:
+        By default, we use Re-TACRED, available here: https://github.com/gstoica27/Re-TACRED
+        Follow the download instructions and place the generated "train.json", "dev.json" and "test,json"
+        files into the folder "/.flair/datasets/re_english_tacred_RE/retacred" in order for this corpus
+        to load correctly.
         """
         if type(base_path) == str:
             base_path: Path = Path(base_path)
 
         # this dataset name
         dataset_name = self.__class__.__name__.lower()
+        if use_retacred: dataset_name += "_RE"
 
         # default dataset folder is the cache root
         if not base_path:
@@ -229,18 +235,47 @@ class RE_ENGLISH_TACRED(CoNLLUCorpus):
 
         if not data_file.is_file():
             source_data_folder = data_folder / "original"
+            retacred_folder = data_folder / "retacred"
             source_data_file = source_data_folder / "TACRED_LDC.zip"
             os.makedirs(source_data_folder, exist_ok=True)
-            self.extract_and_convert_to_conllu(
-                data_file=source_data_file,
-                data_folder=data_folder,
-            )
+
+            if use_retacred:
+                self.extract_and_convert_to_conllu_retacred(
+                    retacred_folder=retacred_folder,
+                    data_folder=data_folder,
+                )
+            else:
+                self.extract_and_convert_to_conllu(
+                    data_file=source_data_file,
+                    data_folder=data_folder,
+                )
 
         super(RE_ENGLISH_TACRED, self).__init__(
             data_folder,
             token_annotation_fields=['ner'],
             in_memory=in_memory,
         )
+
+    def extract_and_convert_to_conllu_retacred(self, data_folder, retacred_folder):
+
+        source_file_paths = [
+            retacred_folder / "train.json",
+            retacred_folder / "dev.json",
+            retacred_folder / "test.json",
+        ]
+        target_filenames = ["tacred-train.conllu", "tacred-dev.conllu", "tacred-test.conllu"]
+
+        for source_file_path, target_filename in zip(source_file_paths, target_filenames):
+            with open(source_file_path, mode="r") as source_file:
+
+                target_file_path = Path(data_folder) / target_filename
+                with open(target_file_path, mode="w", encoding="utf-8") as target_file:
+                    # write CoNLL-U Plus header
+                    target_file.write("# global.columns = id form ner\n")
+
+                    for example in json.load(source_file):
+                        token_list = self._tacred_example_to_token_list(example)
+                        target_file.write(token_list.serialize())
 
     def extract_and_convert_to_conllu(self, data_file, data_folder):
         import zipfile
@@ -338,7 +373,7 @@ class RE_ENGLISH_CONLL04(CoNLLUCorpus):
         )
         data_file = data_folder / "conll04-train.conllu"
 
-        if True or not data_file.is_file():
+        if not data_file.is_file():
             source_data_folder = data_folder / "original"
             cached_path(f"{conll04_url}train.txt", source_data_folder)
             cached_path(f"{conll04_url}dev.txt", source_data_folder)

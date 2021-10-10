@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Union, Dict, List, Optional
 
 import flair
-from flair.data import Corpus, MultiCorpus, FlairDataset, Sentence, Token
+from flair.data import Corpus, MultiCorpus, FlairDataset, Sentence, Token, Span, RelationLabel
 from flair.datasets.base import find_train_dev_test_files
 from flair.file_utils import cached_path, unpack_file
 
@@ -232,27 +232,30 @@ class ColumnDataset(FlairDataset):
     def _convert_lines_to_sentence(self, lines):
 
         sentence: Sentence = Sentence()
+        relations_encoded = None
         for line in lines:
-            # skip comments
+            # handle comments
             if self.comment_symbol is not None and line.startswith(self.comment_symbol):
+                if line.startswith("# relations = "):
+                    relations_encoded = line[14:].strip()
                 continue
 
-            # if sentence ends, convert and return
-            if self.__line_completes_sentence(line):
-                if len(sentence) > 0:
-                    if self.tag_to_bioes is not None:
-                        sentence.convert_tag_scheme(
-                            tag_type=self.tag_to_bioes, target_scheme="iobes"
-                        )
-                    # check if this sentence is a document boundary
-                    if sentence.to_original_text() == self.document_separator_token:
-                        sentence.is_document_boundary = True
-                    return sentence
-
-            # otherwise, this line is a token. parse and add to sentence
-            else:
-                token = self._parse_token(line)
-                sentence.add_token(token)
+            # # if sentence ends, convert and return
+            # if self.__line_completes_sentence(line):
+            #     if len(sentence) > 0:
+            #         if self.tag_to_bioes is not None:
+            #             sentence.convert_tag_scheme(
+            #                 tag_type=self.tag_to_bioes, target_scheme="iobes"
+            #             )
+            #         # check if this sentence is a document boundary
+            #         if sentence.to_original_text() == self.document_separator_token:
+            #             sentence.is_document_boundary = True
+            #         return sentence
+            #
+            # # otherwise, this line is a token. parse and add to sentence
+            # else:
+            token = self._parse_token(line)
+            sentence.add_token(token)
 
         # check if this sentence is a document boundary
         if sentence.to_original_text() == self.document_separator_token: sentence.is_document_boundary = True
@@ -261,6 +264,19 @@ class ColumnDataset(FlairDataset):
             sentence.convert_tag_scheme(
                 tag_type=self.tag_to_bioes, target_scheme="iobes"
             )
+
+        # check if there are relations
+        if relations_encoded:
+            for relation in relations_encoded.split("|"):
+                head_start, head_end, tail_start, tail_end, label = relation.split(";")
+                head = Span([sentence.get_token(idx) for idx in range(int(head_start), int(head_end) + 1)])
+                tail = Span([sentence.get_token(idx) for idx in range(int(tail_start), int(tail_end) + 1)])
+                # remap label if specified
+                if self.label_name_map and label in self.label_name_map.keys():
+                    label = self.label_name_map[label]
+
+                relation_label = RelationLabel(head, tail, label)
+                sentence.add_complex_label("relation", relation_label)
 
         if len(sentence) > 0: return sentence
 
